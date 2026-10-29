@@ -1,38 +1,100 @@
-use anyhow::{Context, Result, anyhow};
-use std::collections::HashSet;
-use std::fs::{File, metadata};
-use std::path::Path;
+use anyhow::{Context, Result, Error, anyhow};
+use walkdir::WalkDir;
+use std::collections::{HashMap, HashSet};
+use std::fs::{metadata};
+use std::path::{Path, PathBuf};
 
-use crate::model::{Card, DeckFile};
+use crate::model::{Card, DeckFile, DeckManager};
 
 pub fn validate<P: AsRef<Path>>(root: P) -> Result<()> {
-    let path = root.as_ref();
-    metadata(path).with_context(|| anyhow!("Path '{}' is invalid", path.display()))?;
+    let root_ref = root.as_ref();
+    metadata(root_ref)
+        .with_context(|| anyhow!("Path '{}' is invalid", root_ref.display()))?;
+
+    let ( deck_manager, invalid_decks ) = collect_decks(root_ref)
+        .with_context(|| anyhow!("Failed to collect decks in '{}'", root_ref.display()))?;
+
+    // TODO: Move println! to main.rs
+    if !invalid_decks.is_empty() {
+        let mut err_message = String::from(format!("Got {} invalid decks:", invalid_decks.len()));
+        for (deck_path, deck_error) in &invalid_decks {
+            let mut deck_message = format!("
+- path: {} 
+  errors:", deck_path.display());
+            for chain in deck_error.chain() {
+                let chain_msg = format!("
+  - {}", chain.to_string());
+                deck_message.push_str(chain_msg.as_str());
+            }
+            err_message.push_str(deck_message.as_str());
+        }
+        return Err(anyhow!(err_message))
+    }
+
+    println!("Got {} valid deck(s):", deck_manager.len());
+    for (path, deck) in deck_manager.decks() {
+        println!("- path: {}
+  cards: {}", path.display(), deck.cards.len())
+    }
+    println!("");
+
     Ok(())
 }
 
-pub fn validate_file<P: AsRef<Path>>(file: P) -> Result<()> {
-    let _ = read_deck(file)?;
-    Ok(())
+pub fn collect_decks<P: AsRef<Path>>(root: P) -> Result<(DeckManager, HashMap<PathBuf, Error>)> {
+    let root_ref = root.as_ref();
+    
+    let mut deck_manager = DeckManager::new(root_ref)
+        .with_context(|| anyhow!("Failed to create deck manager for root '{}'", root_ref.display()))?;
+    let mut invalid_decks: HashMap<PathBuf, Error> = HashMap::new();
+    for deck_path in find_yaml_files(root_ref) {
+        let deck = read_deck(&deck_path);
+        match deck {
+            Ok(d) => {
+                deck_manager.add_deck(d)
+                    .with_context(|| anyhow!("Failed to add deck '{}' to manager '{}'", deck_path.display(), deck_manager.root().display()))?;
+            }
+            Err(e) => {
+                invalid_decks.insert(deck_path, e);
+            }
+        }
+    }
+
+    Ok((deck_manager, invalid_decks))
 }
 
-fn read_deck<F: AsRef<Path>>(file: F) -> Result<DeckFile> {
-    let path = file.as_ref();
+fn find_yaml_files<P: AsRef<Path>>(path: P) -> Vec<PathBuf> {
+    let path_ref = path.as_ref();
+    WalkDir::new(path_ref)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+            && e.path().extension().map_or(false, |ext| {
+                ext.eq_ignore_ascii_case("yml") || ext.eq_ignore_ascii_case("yaml")
+            })
+        })
+        .map(|e| e.into_path())
+        .collect()
+}
+ 
+fn read_deck<P: AsRef<Path>>(path: P) -> Result<DeckFile> {
+    let file = path.as_ref();
 
-    let file = File::open(path)
-        .with_context(|| anyhow!("Failed to open deck file '{}'", path.display()))?;
-
-    let deck: DeckFile = serde_yaml::from_reader(file)
-        .with_context(|| anyhow!("Failed to parse deck file '{}'", path.display()))?;
+    let deck: DeckFile = DeckFile::load_from_file(file)
+        .with_context(|| anyhow!("Failed to parse deck file '{}'", file.display()))?;
 
     validate_deck(&deck)
-        .with_context(|| anyhow!("Failed to validate deck file '{}'", path.display()))?;
+        .with_context(|| anyhow!("Failed to validate deck file '{}'", file.display()))?;
 
     Ok(deck)
 }
 
 fn validate_deck(deck: &DeckFile) -> Result<()> {
     let mut card_set: HashSet<&str> = HashSet::new();
+    let deck_path = deck.path();
+    deck_path.to_str()
+        .with_context(|| anyhow!("Deck path '{}' contains invalid unicode character", deck_path.display()))?;
     for card in &deck.cards {
         let id = card.id().trim();
         if id.is_empty() {
@@ -80,10 +142,9 @@ mod tests {
     use std::io::Write;
     use tempfile::NamedTempFile;
 
-    fn write_and_load(deck: &DeckFile) -> Result<DeckFile> {
+    fn write_and_load(deck: &DeckFile, mut temp_file: &NamedTempFile) -> Result<DeckFile> {
         let deck_yaml =
             serde_yaml::to_string(&deck).expect("Failed to convert deck object to YAML string");
-        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
         temp_file
             .write_all(deck_yaml.as_bytes())
             .expect("Failed to write deck to temp file");
@@ -93,8 +154,10 @@ mod tests {
 
     #[test]
     fn test_valid_deck() {
-        let deck = DeckFile {
-            cards: vec![
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![
                 Card::Qa(BaseCard {
                     id: String::from("immutable-binding-keyword"),
                     prompt: String::from(
@@ -122,69 +185,81 @@ mod tests {
                     ],
                 },
             ],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+            );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
     #[test]
     fn test_empty_deck() {
-        let deck = DeckFile { cards: vec![] };
-        let deck_read = write_and_load(&deck).unwrap();
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new( 
+            temp_file.path().to_path_buf(),
+            vec![] 
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
     #[test]
     #[should_panic(expected = "Card has empty id")]
     fn test_empty_id() {
-        let deck = DeckFile {
-            cards: vec![Card::Qa(BaseCard {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![Card::Qa(BaseCard {
                 id: String::from("   "),
                 prompt: String::from(
                     "What keyword creates a binding that is immutable by default?",
                 ),
                 answer: String::from("let"),
             })],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
     #[test]
     #[should_panic(expected = "Card 'immutable-binding-keyword' has empty prompt")]
     fn test_empty_prompt() {
-        let deck = DeckFile {
-            cards: vec![Card::Qa(BaseCard {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![Card::Qa(BaseCard {
                 id: String::from("immutable-binding-keyword"),
                 prompt: String::from("    "),
                 answer: String::from("let"),
             })],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
     #[test]
     #[should_panic(expected = "Card 'immutable-binding-keyword' has empty answer")]
     fn test_empty_answer() {
-        let deck = DeckFile {
-            cards: vec![Card::Qa(BaseCard {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![Card::Qa(BaseCard {
                 id: String::from("immutable-binding-keyword"),
                 prompt: String::from(
                     "What keyword creates a binding that is immutable by default?",
                 ),
                 answer: String::from("    "),
             })],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
     #[test]
     #[should_panic(expected = "Duplicate card found with id 'immutable-binding-keyword'")]
     fn test_duplicate_card() {
-        let deck = DeckFile {
-            cards: vec![
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![
                 Card::Qa(BaseCard {
                     id: String::from("immutable-binding-keyword"),
                     prompt: String::from(
@@ -200,8 +275,8 @@ mod tests {
                     answer: String::from("let"),
                 }),
             ],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
@@ -210,8 +285,10 @@ mod tests {
         expected = "Card 'valid-owner-count' has less than two exact-unique trimmed-nonempty options"
     )]
     fn test_more_than_two_options() {
-        let deck = DeckFile {
-            cards: vec![Card::MultipleChoice {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![Card::MultipleChoice {
                 base: BaseCard {
                     id: String::from("valid-owner-count"),
                     prompt: String::from(
@@ -225,8 +302,8 @@ mod tests {
                     String::from("Zero"),
                 ],
             }],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 
@@ -235,8 +312,10 @@ mod tests {
         expected = "Card 'valid-owner-count' has answer that does not equal to exactly one option"
     )]
     fn test_answer_not_in_options() {
-        let deck = DeckFile {
-            cards: vec![Card::MultipleChoice {
+        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
+        let deck = DeckFile::new(
+            temp_file.path().to_path_buf(),
+            vec![Card::MultipleChoice {
                 base: BaseCard {
                     id: String::from("valid-owner-count"),
                     prompt: String::from(
@@ -250,8 +329,8 @@ mod tests {
                     String::from("unlimited"),
                 ],
             }],
-        };
-        let deck_read = write_and_load(&deck).unwrap();
+        );
+        let deck_read = write_and_load(&deck, &temp_file).unwrap();
         assert_eq!(deck, deck_read);
     }
 }

@@ -10,7 +10,9 @@ crossterm = "0.29.0"
 ratatui = "0.30.2"
 rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
+serde_rusqlite = "0.44.0"
 serde_yaml = "0.9.34"
+walkdir = "2.5.0"
 
 [dev-dependencies]
 tempfile = "3.27.0"
