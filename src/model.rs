@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf, absolute};
 use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
+use smart_default::SmartDefault;
 
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -131,14 +132,38 @@ impl DeckManager {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, SmartDefault)]
+pub struct Schedule {
+    #[default = 0]
+    pub due_at: i64,
+    #[default = 0]
+    pub interval_seconds: i64,
+    #[default = 2.5]
+    pub ease: f64,
+    #[default = 0]
+    pub repetitions: i32,
+}
+
+impl Schedule {
+    pub fn from(state: &SchedulerState) -> Self {
+        Schedule{
+            due_at: state.schedule.due_at,
+            interval_seconds: state.schedule.interval_seconds,
+            ease: state.schedule.ease,
+            repetitions: state.schedule.repetitions
+        }
+    }
+}
+
+
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct SchedulerState {
     pub deck_path: String,
     pub card_id: String,
-    pub due_at: i64,
-    pub interval_seconds: i64,
-    pub ease: f64,
-    pub repetitions: i32,
+    
+    #[serde(flatten)]
+    pub schedule: Schedule,
 }
 
 #[repr(u8)] 
@@ -151,6 +176,7 @@ pub enum Grade {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[allow(dead_code)]
 pub struct ReviewLog {
     pub id: i32,
     pub deck_path: String,

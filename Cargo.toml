@@ -12,6 +12,7 @@ rusqlite = { version = "0.41.0", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_rusqlite = "0.44.0"
 serde_yaml = "0.9.34"
+smart-default = "0.7.1"
 walkdir = "2.5.0"
 
 [dev-dependencies]

@@ -1,0 +1,19 @@
+cards:
+  - id: immutable-binding-keyword
+    type: qa
+    prompt: What keyword creates a binding that is immutable by default?
+    answer: let
+
+  - id: owner-blank
+    type: fill_blank
+    prompt: Each value in Rust has an _____.
+    answer: owner
+
+  - id: valid-owner-count
+    type: multiple_choice
+    prompt: How many owners can a value have at one time under the basic ownership rule?
+    options:
+      - Zero
+      - One
+      - Unlimited
+    answer: One

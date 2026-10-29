@@ -1,5 +1,5 @@
 use anyhow::{Context, Error, Result, anyhow};
-use serde_rusqlite::{columns_from_statement, from_row_with_columns};
+use serde_rusqlite::{columns_from_statement, from_row_with_columns, to_params_named};
 use std::path::Path;
 use std::time::Duration;
 use rusqlite::{Connection, params};
@@ -71,25 +71,54 @@ impl Storage {
         Ok(())
     }
 
-    pub fn load_scheduler_state(&mut self, deck_path: &str, card_id: &str) -> Result<SchedulerState> {
+    pub fn load_scheduler_state(&mut self, deck_path: &str, card_id: &str) -> Result<Option<SchedulerState>> {
         let conn = &mut self.connection;
 
-        let mut stmt = conn.prepare("SELECT * FROM scheduler_state WHERE deck_path = ? AND deck_path = ?")?;
+        let mut stmt = conn.prepare(r#"
+            SELECT * FROM scheduler_state 
+                WHERE deck_path = ? 
+                  AND deck_path = ?"#
+        ).with_context(|| anyhow!("Failed to prepare statement for deck '{}' card '{}'", deck_path, card_id))?;
         let columns = columns_from_statement(&stmt);
-        let mut rows = stmt.query_and_then(params![deck_path, card_id], |r| from_row_with_columns::<SchedulerState>(r, &columns))?;
-        if let Some(state) = rows.next() {
-            return state.map_err(|err| Error::new(err));
-        } else {
-            let new_state = SchedulerState{
-                deck_path: deck_path.to_string(),
-                card_id: card_id.to_string(),
-                ease: 2.5,
-                interval_seconds: 0,
-                repetitions: 0,
-                due_at: 0,
-            };
 
-            Ok(new_state)
+        let mut rows = stmt.query_and_then(
+            params![deck_path, card_id], 
+            |r| from_row_with_columns::<SchedulerState>(r, &columns)
+        ).with_context(|| anyhow!("Failed to query scheduler state for deck '{}' card '{}'", deck_path, card_id))?;
+        
+        rows.next().transpose().map_err(Error::new)
+    }
+
+    pub fn save_scheduler_state(&mut self, state: &SchedulerState) -> Result<()> {
+        let conn = &mut self.connection;
+        let tx = conn.transaction()
+            .with_context(|| anyhow!("Failed to create transaction for deck '{}' card '{}'",
+                state.deck_path, state.card_id))?;
+
+        {
+            let mut stmt = tx.prepare(r#"
+                INSERT INTO scheduler_state (deck_path, card_id, due_at, interval_seconds, ease, repetitions)
+                VALUES (:deck_path, :card_id, :due_at, :interval_seconds, :ease, :repetitions)
+                ON CONFLICT (deck_path, card_id) DO UPDATE SET
+                    due_at           = excluded.due_at, 
+                    interval_seconds = excluded.interval_seconds, 
+                    ease             = excluded.ease, 
+                    repetitions      = excluded.repetitions;
+            "#).with_context(|| anyhow!("Failed to prepare statement for deck '{}' card '{}')", 
+                state.deck_path, state.card_id))?;
+                
+            let state_params = to_params_named(state)
+                .with_context(|| anyhow!("Failed to create named params for for deck '{}' card '{}'",
+                    state.deck_path, state.card_id))?;
+            
+            stmt.execute(state_params.to_slice().as_slice())
+                .with_context(|| anyhow!("Failed to execute upsert for deck '{}' card '{}'",
+                state.deck_path, state.card_id))?;
         }
+
+        tx.commit().with_context(|| anyhow!("Failed to commit scheduler state for deck '{}' card '{}'",
+            state.deck_path, state.card_id))?;
+
+        Ok(())
     }
 }
