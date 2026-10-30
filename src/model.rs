@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::{Path, PathBuf, absolute};
+use std::str::FromStr;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, Error, anyhow};
 use serde::{Deserialize, Serialize};
 use serde_yaml;
 use smart_default::SmartDefault;
@@ -175,6 +176,32 @@ pub enum Grade {
     Easy = 4
 }
 
+impl TryFrom<u8> for Grade {
+    type Error = anyhow::Error;
+
+    fn try_from(v: u8) -> std::prelude::v1::Result<Self, Self::Error> {
+        match v {
+            v if v == Grade::Again as u8 => Ok(Grade::Again),
+            v if v == Grade::Hard as u8 => Ok(Grade::Hard),
+            v if v == Grade::Good as u8 => Ok(Grade::Good),
+            v if v == Grade::Easy as u8 => Ok(Grade::Easy),
+            _ => Err(anyhow!("Int {} can't be parsed to grade", v)),
+        }
+    }
+}
+
+impl FromStr for Grade {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+        let parse_int = s.parse::<u8>()
+            .map_err(|_| anyhow!("String '{}' can't be parsed to u8", s))?;
+
+        Grade::try_from(parse_int)
+            .map_err(|_| anyhow!("String '{}' can't be parsed to grade", s))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[allow(dead_code)]
 pub struct ReviewLog {
@@ -188,6 +215,7 @@ pub struct ReviewLog {
     pub resulting_ease: f64,
     pub resulting_repetitions: i32,
 }
+
 
 /**
  * TODO: Add unit tests for
