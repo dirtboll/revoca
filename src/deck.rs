@@ -166,11 +166,13 @@ mod tests {
                         "What keyword creates a binding that is immutable by default?",
                     ),
                     answer: String::from("let"),
+                    deck_file: "./deck.yaml".to_string(),
                 }),
                 Card::FillBlank(BaseCard {
                     id: String::from("owner-blank"),
                     prompt: String::from("Each value in Rust has an _____."),
                     answer: String::from("owner"),
+                    deck_file: "./deck.yaml".to_string(),
                 }),
                 Card::MultipleChoice {
                     base: BaseCard {
@@ -179,6 +181,7 @@ mod tests {
                             "How many owners can a value have at one time under the basic ownership rule?",
                         ),
                         answer: String::from("One"),
+                        deck_file: "./deck.yaml".to_string(),
                     },
                     options: vec![
                         String::from("Zero"),
@@ -215,6 +218,7 @@ mod tests {
                     "What keyword creates a binding that is immutable by default?",
                 ),
                 answer: String::from("let"),
+                deck_file: "./deck.yaml".to_string(),
             })],
         );
         let deck_read = write_and_load(&deck, &temp_file).unwrap();
@@ -231,6 +235,7 @@ mod tests {
                 id: String::from("immutable-binding-keyword"),
                 prompt: String::from("    "),
                 answer: String::from("let"),
+                deck_file: "./deck.yaml".to_string(),
             })],
         );
         let deck_read = write_and_load(&deck, &temp_file).unwrap();
@@ -249,6 +254,7 @@ mod tests {
                     "What keyword creates a binding that is immutable by default?",
                 ),
                 answer: String::from("    "),
+                deck_file: "./deck.yaml".to_string(),
             })],
         );
         let deck_read = write_and_load(&deck, &temp_file).unwrap();
@@ -268,6 +274,7 @@ mod tests {
                         "What keyword creates a binding that is immutable by default?",
                     ),
                     answer: String::from("let"),
+                    deck_file: "./deck.yaml".to_string(),
                 }),
                 Card::Qa(BaseCard {
                     id: String::from("immutable-binding-keyword"),
@@ -275,6 +282,7 @@ mod tests {
                         "What keyword creates a binding that is immutable by default?",
                     ),
                     answer: String::from("let"),
+                    deck_file: "./deck.yaml".to_string(),
                 }),
             ],
         );
@@ -297,6 +305,7 @@ mod tests {
                         "How many owners can a value have at one time under the basic ownership rule?",
                     ),
                     answer: String::from("One"),
+                    deck_file: "./deck.yaml".to_string(),
                 },
                 options: vec![
                     String::from("Zero"),
@@ -324,6 +333,7 @@ mod tests {
                         "How many owners can a value have at one time under the basic ownership rule?",
                     ),
                     answer: String::from("Two"),
+                    deck_file: "./deck.yaml".to_string(),
                 },
                 options: vec![
                     String::from("Zero"),

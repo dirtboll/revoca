@@ -38,6 +38,9 @@ enum Commands {
 
         #[arg(help("The UI to use"), default_value = "println", short, long, default_value = "println")]
         ui: UiChoice,
+
+        #[arg(help("Whether to study all cards instead of undue + unseen"), default_value = "false", short, long)]
+        all: bool,
     }
 }
 
@@ -51,17 +54,21 @@ fn main() -> Result<()> {
             validate(root)?;
             println!("Validate success!");
         }
-        Commands::Study { root , ui} => {
+        Commands::Study { root , ui, all} => {
             let mut storage = Storage::new(&db)
                 .with_context(|| anyhow!("Failed to create storage"))?;
             storage.migrate()
                 .with_context(|| anyhow!("Failed to migrate storage"))?;
-            let mut ctx = AppContext{storage: &mut storage};
             let (deck_manager, _) = collect_decks(&root)?;
+            let mut ctx = AppContext{
+                storage: storage,
+                deck_manager: deck_manager,
+                is_all_card: *all
+            };
             match ui {
                 UiChoice::Println => {
                     let mut ui_obj = UI::Println(PrintlnUi{});
-                    study(&mut ctx, &mut ui_obj, &deck_manager)?
+                    study(&mut ctx, &mut ui_obj)?
                 }
                 UiChoice::Ratatui => {}
             }

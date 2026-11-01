@@ -27,17 +27,47 @@ impl UI {
             UI::Println(_) => {
                 println!("-----------------");
                 println!("Q: {}", card.prompt());
-                print!("A => ");
-                
-                io::stdout().flush()
-                    .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
-                io::stdin()
-                    .read_line(&mut answer)
-                    .with_context(|| anyhow!("Failed to read answer for card {}", card.id()))?;
+                match card {
+                    Card::Qa(_) | Card::FillBlank(_) => {
+                        print!("A => ");
+                        
+                        io::stdout().flush()
+                            .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
+                        io::stdin()
+                            .read_line(&mut answer)
+                            .with_context(|| anyhow!("Failed to read answer for card {}", card.id()))?;
+                    }
+                    Card::MultipleChoice { options, .. } => {
+                        for opt_i in 0..options.len() {
+                            println!("[{}] {}", opt_i + 1, options[opt_i])
+                        }
+                        loop {
+                            answer = String::new();
+                            print!("A => ");
+
+                            io::stdout().flush()
+                                .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
+                            io::stdin()
+                                .read_line(&mut answer)
+                                .with_context(|| anyhow!("Failed to read answer for card {}", card.id()))?;
+
+                            match answer.trim().parse::<usize>() {
+                                Ok(answer_i) => {
+                                    if answer_i - 1 < options.len() {
+                                        answer = options[answer_i - 1].to_string();
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    println!("!: {}", e)       
+                                }
+                            }
+                        }
+                    }
+                }
             }
             UI::Ratatui(_) => {}
         }
-
         Ok(answer)
     }
 

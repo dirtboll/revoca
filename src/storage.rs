@@ -3,8 +3,9 @@ use serde_rusqlite::{columns_from_statement, from_row_with_columns, to_params_na
 use std::path::Path;
 use std::time::Duration;
 use rusqlite::{Connection, params};
+use uuid::Uuid;
 
-use crate::model::SchedulerState;
+use crate::model::{Grade, SchedulerState};
 
 pub struct Storage {
     connection: Connection,
@@ -50,7 +51,7 @@ impl Storage {
                 );
 
                 CREATE TABLE review_logs (
-                    id INTEGER PRIMARY KEY,
+                    id TEXT PRIMARY KEY,
                     deck_path TEXT NOT NULL,
                     card_id TEXT NOT NULL,
                     grade INTEGER NOT NULL,
@@ -71,8 +72,8 @@ impl Storage {
         Ok(())
     }
 
-    pub fn load_scheduler_state(&mut self, deck_path: &str, card_id: &str) -> Result<Option<SchedulerState>> {
-        let conn = &mut self.connection;
+    pub fn load_scheduler_state(&self, deck_path: &str, card_id: &str) -> Result<Option<SchedulerState>> {
+        let conn = &self.connection;
 
         let mut stmt = conn.prepare(r#"
             SELECT * FROM scheduler_state 
@@ -117,6 +118,50 @@ impl Storage {
         }
 
         tx.commit().with_context(|| anyhow!("Failed to commit scheduler state for deck '{}' card '{}'",
+            state.deck_path, state.card_id))?;
+
+        Ok(())
+    }
+
+    pub fn insert_review_logs(&mut self, state: &SchedulerState, grade: Grade, reviewed_at_ts: i64) -> Result<()> {
+        let conn = &mut self.connection;
+        let tx = conn.transaction()
+            .with_context(|| anyhow!("Failed to create transaction for deck '{}' card '{}'",
+                state.deck_path, state.card_id))?;
+
+        {
+            let mut stmt = tx.prepare(r#"
+                INSERT INTO review_logs (
+                    id, 
+                    deck_path, 
+                    card_id, 
+                    grade, 
+                    reviewed_at, 
+                    resulting_due_at,
+                    resulting_interval_seconds,
+                    resulting_ease,
+                    resulting_repetitions
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            "#).with_context(|| anyhow!("Failed to prepare statement for deck '{}' card '{}')", 
+                state.deck_path, state.card_id))?;
+
+            stmt.execute(params![
+                Uuid::now_v7().to_string(),
+                state.deck_path,
+                state.card_id,
+                grade as u8,
+                reviewed_at_ts,
+                state.schedule.due_at,
+                state.schedule.interval_seconds,
+                state.schedule.ease,
+                state.schedule.repetitions
+            ])
+                .with_context(|| anyhow!("Failed to execute upsert for deck '{}' card '{}'",
+                state.deck_path, state.card_id))?;
+        }
+
+        tx.commit().with_context(|| anyhow!("Failed to commit review logs for deck '{}' card '{}'",
             state.deck_path, state.card_id))?;
 
         Ok(())

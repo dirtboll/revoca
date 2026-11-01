@@ -14,7 +14,12 @@ pub struct BaseCard {
     pub id: String,
     pub prompt: String,
     pub answer: String,
+
+    #[serde(skip)]
+    pub deck_file: String,
 }
+
+
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -47,6 +52,12 @@ impl Card {
             Card::MultipleChoice { base, .. } => &base.answer,
         }
     }
+    pub fn deck_path(&self) -> &str {
+        match self {
+            Card::Qa(card) | Card::FillBlank(card) => &card.deck_file,
+            Card::MultipleChoice { base, .. } => &base.deck_file,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -70,10 +81,18 @@ impl DeckFile {
         let path_ref = path.as_ref();
         let abs_path = absolute(path_ref)
             .with_context(|| anyhow!("Failed to retrieve absolute path of deck '{}'", path_ref.display()))?;
+        let abs_path_str = abs_path.clone().into_string()
+            .map_err(|_| anyhow!("Failed to convert deck '{}' path to string", abs_path.display()))?;
         let fd = File::open(&abs_path)
             .with_context(|| anyhow!("Failed to open file '{}'", abs_path.display()))?;
         let mut deck: Self = serde_yaml::from_reader(fd)
             .with_context(|| anyhow!("Failed to parse YAML file '{}'", abs_path.display()))?;
+        for card in &mut deck.cards {
+            match card {
+                Card::Qa(base) | Card::FillBlank(base) => { base.deck_file = abs_path_str.clone()}
+                Card::MultipleChoice { base, .. } => { base.deck_file = abs_path_str.clone()}
+            }
+        }
         deck.path = abs_path.to_path_buf();
         Ok(deck)
     }
@@ -168,7 +187,7 @@ pub struct SchedulerState {
 }
 
 #[repr(u8)] 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub enum Grade {
     Again = 1,
     Hard = 2,
