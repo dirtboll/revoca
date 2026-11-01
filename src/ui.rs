@@ -2,6 +2,8 @@ use std::{io::{self, Write}};
 
 use anyhow::{Context, Result, anyhow};
 use clap::ValueEnum;
+// use colored::Colorize;
+use crossterm::style::Stylize;
 
 use crate::model::{Card, Grade};
 
@@ -26,10 +28,10 @@ impl UI {
         match self {
             UI::Println(_) => {
                 println!("-----------------");
-                println!("Q: {}", card.prompt());
+                println!("  {} {}", "Question".blue().bold(), card.prompt());
                 match card {
                     Card::Qa(_) | Card::FillBlank(_) => {
-                        print!("A => ");
+                        print!("    {} ", "Answer".blue().bold());
                         
                         io::stdout().flush()
                             .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
@@ -39,11 +41,11 @@ impl UI {
                     }
                     Card::MultipleChoice { options, .. } => {
                         for opt_i in 0..options.len() {
-                            println!("[{}] {}", opt_i + 1, options[opt_i])
+                            println!("       [{}] {}", format!("{}", opt_i + 1).bold(), options[opt_i])
                         }
                         loop {
                             answer = String::new();
-                            print!("A => ");
+                            print!("    {} ", "Answer".blue().bold());
 
                             io::stdout().flush()
                                 .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
@@ -59,7 +61,7 @@ impl UI {
                                     }
                                 }
                                 Err(e) => {
-                                    println!("!: {}", e)       
+                                    println!("    {} {}", "Error!".red().bold(), e)       
                                 }
                             }
                         }
@@ -71,16 +73,20 @@ impl UI {
         Ok(answer)
     }
 
-    pub fn show_answer(&self, card: &Card) -> Result<()> {
-        let answer = card.answer();
-        match self {
-            UI::Println(_) => {
-                println!("Correct answer: {}", answer);
-                
-                io::stdout().flush()
-                    .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
+    pub fn show_result(&self, card: &Card, answer: String) -> Result<()> {
+        if card.is_answer_correct(answer) {
+            println!("   {}", "Correct".green().bold());
+        } else {
+            let card_answer = card.answer();
+            match self {
+                UI::Println(_) => {
+                    println!("    {} {}", "Wrong!".red().bold(), card_answer);
+                    
+                    io::stdout().flush()
+                        .with_context(|| anyhow!("Failed to flush stdout for card {}", card.id()))?;
+                }
+                UI::Ratatui(_) => {}
             }
-            UI::Ratatui(_) => {}
         }
 
         Ok(())
@@ -91,7 +97,8 @@ impl UI {
             UI::Println(_) => {
                 loop {
                     println!();
-                    print!("Grade? [1 (Again) / 2 (Hard) / 3 (Good) / 4 (Easy) => ");
+                    println!("  {}", "Please grade 1 (Again), 2 (Hard), 3 (Good), or 4 (Easy)".grey());
+                    print!("     {} ", "Grade".yellow().bold());
                     io::stdout().flush()
                         .with_context(|| anyhow!("Failed to flush stdout for card"))?;
     

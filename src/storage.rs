@@ -78,7 +78,7 @@ impl Storage {
         let mut stmt = conn.prepare(r#"
             SELECT * FROM scheduler_state 
                 WHERE deck_path = ? 
-                  AND deck_path = ?"#
+                  AND card_id = ?"#
         ).with_context(|| anyhow!("Failed to prepare statement for deck '{}' card '{}'", deck_path, card_id))?;
         let columns = columns_from_statement(&stmt);
 

@@ -32,10 +32,10 @@ pub fn study(ctx: &mut AppContext, ui: &mut UI) -> Result<()> {
     for card in filtered_cards {
         let card_id = card.id();
 
-        ui.ask_card(card)
+        let answer = ui.ask_card(card)
             .with_context(|| anyhow!("Failed to ask card '{}' deck '{}'", card_id, card.deck_path()))?;
 
-        ui.show_answer(card)
+        ui.show_result(card, answer)
             .with_context(|| anyhow!("Failed to show answer for card '{}' deck '{}'", card_id, card.deck_path()))?;
 
         let grade = ui.ask_grade()
@@ -69,7 +69,11 @@ fn filter_cards<'a>(storage: &Storage, cards: Vec<&'a Card>) -> Result<Vec<&'a C
         }
     };
 
-    Ok(filtered_cards)
+    if filtered_cards.len() == 0 {
+        Err(anyhow!("All cards are not yet due, nothing to study!"))
+    } else {
+        Ok(filtered_cards)
+    }
 }
 
 fn update_card_schedule(storage: &mut Storage, grade: Grade, card: &Card) -> Result<()> {

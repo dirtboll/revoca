@@ -58,6 +58,9 @@ impl Card {
             Card::MultipleChoice { base, .. } => &base.deck_file,
         }
     }
+    pub fn is_answer_correct(&self, answer: String) -> bool {
+        answer.trim().eq_ignore_ascii_case(self.answer())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
