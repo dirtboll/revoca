@@ -34,7 +34,7 @@ pub fn validate<P: AsRef<Path>>(root: P) -> Result<()> {
     println!("Got {} valid deck(s):", deck_manager.len());
     for (path, deck) in deck_manager.decks() {
         println!("- path: {}
-  cards: {}", path.display(), deck.cards.len())
+  cards: {}", path, deck.cards.len())
     }
     println!("");
 
@@ -52,7 +52,7 @@ pub fn collect_decks<P: AsRef<Path>>(root: P) -> Result<(DeckManager, HashMap<Pa
         match deck {
             Ok(d) => {
                 deck_manager.add_deck(d)
-                    .with_context(|| anyhow!("Failed to add deck '{}' to manager '{}'", deck_path.display(), deck_manager.root().display()))?;
+                    .with_context(|| anyhow!("Failed to add deck '{}' to manager '{}'", deck_path.display(), deck_manager.root()))?;
             }
             Err(e) => {
                 invalid_decks.insert(deck_path, e);
@@ -94,9 +94,6 @@ fn read_deck<P: AsRef<Path>>(path: P) -> Result<DeckFile> {
 
 fn validate_deck(deck: &DeckFile) -> Result<()> {
     let mut card_set: HashSet<&str> = HashSet::new();
-    let deck_path = deck.path();
-    deck_path.to_str()
-        .with_context(|| anyhow!("Deck path '{}' contains invalid unicode character", deck_path.display()))?;
     for card in &deck.cards {
         let id = card.id().trim();
         if id.is_empty() {

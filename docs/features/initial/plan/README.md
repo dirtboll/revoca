@@ -287,7 +287,7 @@ Use migration versions through SQLite `user_version`. Enable foreign keys whenev
 
 ### `exam_sessions`
 
-- `id INTEGER PRIMARY KEY`
+- `id TEXT PRIMARY KEY`
 - `selected_deck_path TEXT NOT NULL`
 - `started_at INTEGER NOT NULL`
 - `completed_at INTEGER NOT NULL`
@@ -299,7 +299,7 @@ Use migration versions through SQLite `user_version`. Enable foreign keys whenev
 ### `exam_answers`
 
 - `id INTEGER PRIMARY KEY`
-- `exam_session_id INTEGER NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE`
+- `exam_session_id TEXT NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE`
 - `position INTEGER NOT NULL`
 - `deck_path TEXT NOT NULL`
 - `card_id TEXT NOT NULL`

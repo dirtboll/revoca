@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Ok, Result, anyhow};
 
-use crate::model::{Card, DeckFile, DeckManager, Grade, SchedulerState};
+use crate::model::{Card, DeckFile, DeckManager, ExamAnswer, ExamSession, Grade, SchedulerState};
 use crate::{Storage};
 use crate::scheduler::schedule;
 use crate::ui::UI;
@@ -35,7 +35,7 @@ pub fn study(ctx: &mut AppContext, ui: &mut UI) -> Result<()> {
         let answer = ui.ask_card(card)
             .with_context(|| anyhow!("Failed to ask card '{}' deck '{}'", card_id, card.deck_path()))?;
 
-        ui.show_result(card, answer)
+        ui.show_result(card, &answer)
             .with_context(|| anyhow!("Failed to show answer for card '{}' deck '{}'", card_id, card.deck_path()))?;
 
         let grade = ui.ask_grade()
@@ -45,6 +45,66 @@ pub fn study(ctx: &mut AppContext, ui: &mut UI) -> Result<()> {
             .with_context(|| anyhow!("Failed to update card schedule for  card '{}' deck '{}'", card_id, card.deck_path()))?;
         
     }
+
+    Ok(())
+}
+
+pub fn exam(ctx: &mut AppContext, ui: &mut UI) -> Result<()> {
+    let storage = &mut ctx.storage;
+    let deck_manager = &ctx.deck_manager;
+
+    let decks: Vec<&DeckFile> = deck_manager.decks().values().collect();
+    let mut cards: Vec<&Card> = decks.iter().map(|d| &d.cards).flatten().collect();
+    shuffle(&mut cards);
+
+    let mut now_ts = get_now_ts()?;
+
+    let mut exam_session = ExamSession::new(
+        deck_manager.root(), 
+        now_ts, 
+        -1,
+        cards.len() as i64, 
+        -1);
+    storage.save_exam_session(&exam_session)
+        .with_context(|| anyhow!("Failed to save exam session"))?;
+
+    let mut exam_answers: Vec<ExamAnswer> = Vec::new();
+    for card_i in 0..cards.len() {
+        let card = cards[card_i];
+        let card_id = card.id();
+
+        let answer = ui.ask_card(card)
+            .with_context(|| anyhow!("Failed to ask card '{}' deck '{}'", card_id, card.deck_path()))?;
+        let is_answer_correct = card.is_answer_correct(&answer);
+        
+        ui.show_result(card, &answer)
+            .with_context(|| anyhow!("Failed to show answer for card '{}' deck '{}'", card_id, card.deck_path()))?;
+
+        now_ts = get_now_ts()?;
+        let exam_answer = ExamAnswer::new(
+            &exam_session, 
+            card_i as i64, 
+            card, 
+            &answer, 
+            is_answer_correct, 
+            now_ts
+        );
+        storage.save_exam_answer(&exam_answer)
+            .with_context(|| anyhow!("Failed to save exam answer for card '{}' session '{}'", card.id(), exam_session.id()))?;
+        exam_answers.push(exam_answer);
+    }
+
+    now_ts = get_now_ts()?;
+    exam_session.completed_at = now_ts;
+    exam_session.correct_cards = exam_answers
+        .iter()
+        .filter_map(|a| if a.is_correct { Some(1) } else { None })
+        .sum();
+    storage.save_exam_session(&exam_session)
+        .with_context(|| anyhow!("Failed to save exam session '{}'", exam_session.id()))?;
+    
+    ui.print_exam_result(&exam_session)
+        .with_context(|| anyhow!("Failed to print exam result"))?;
 
     Ok(())
 }
@@ -117,4 +177,12 @@ fn shuffle<T>(vec: &mut [T]) {
         
         vec.swap(i, j);
     }
+}
+
+fn get_now_ts() -> Result<i64> {
+    let now = SystemTime::now();
+    let now_epoch = now
+        .duration_since(UNIX_EPOCH)
+        .with_context(|| anyhow!("Failed to retrieve time epoch"))?;
+    Ok(now_epoch.as_secs() as i64)
 }

@@ -11,7 +11,7 @@ mod ui;
 
 use crate::deck::{validate, collect_decks};
 use crate::storage::Storage;
-use crate::app::{AppContext, study};
+use crate::app::{AppContext, study, exam};
 use crate::ui::{UI,UiChoice, PrintlnUi};
 
 #[derive(Parser)]
@@ -41,6 +41,14 @@ enum Commands {
 
         #[arg(help("Whether to study all cards instead of undue + unseen"), default_value = "false", short, long)]
         all: bool,
+    },
+    #[command(about("Start exam session"), long_about = None)]
+    Exam {
+        #[arg(help("The root path to load the decks from"), default_value = "./decks")]
+        root: PathBuf,
+
+        #[arg(help("The UI to use"), default_value = "println", short, long, default_value = "println")]
+        ui: UiChoice,
     }
 }
 
@@ -69,6 +77,25 @@ fn main() -> Result<()> {
                 UiChoice::Println => {
                     let mut ui_obj = UI::Println(PrintlnUi{});
                     study(&mut ctx, &mut ui_obj)?
+                }
+                UiChoice::Ratatui => {}
+            }
+        }
+        Commands::Exam { root, ui } => {
+            let mut storage = Storage::new(&db)
+                .with_context(|| anyhow!("Failed to create storage"))?;
+            storage.migrate()
+                .with_context(|| anyhow!("Failed to migrate storage"))?;
+            let (deck_manager, _) = collect_decks(&root)?;
+            let mut ctx = AppContext{
+                storage: storage,
+                deck_manager: deck_manager,
+                is_all_card: true,
+            };
+            match ui {
+                UiChoice::Println => {
+                    let mut ui_obj = UI::Println(PrintlnUi{});
+                    exam(&mut ctx, &mut ui_obj)?
                 }
                 UiChoice::Ratatui => {}
             }

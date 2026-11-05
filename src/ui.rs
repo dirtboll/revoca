@@ -5,7 +5,7 @@ use clap::ValueEnum;
 // use colored::Colorize;
 use crossterm::style::Stylize;
 
-use crate::model::{Card, Grade};
+use crate::model::{Card, ExamSession, Grade};
 
 pub struct PrintlnUi;
 pub struct RatatuiUi;
@@ -73,7 +73,7 @@ impl UI {
         Ok(answer)
     }
 
-    pub fn show_result(&self, card: &Card, answer: String) -> Result<()> {
+    pub fn show_result(&self, card: &Card, answer: &str) -> Result<()> {
         if card.is_answer_correct(answer) {
             println!("   {}", "Correct".green().bold());
         } else {
@@ -116,6 +116,28 @@ impl UI {
                 Ok(Grade::Again)
             }
         }
+    }
+
+    pub fn print_exam_result(&self, exam_session: &ExamSession) -> Result<()> {
+        match self {
+            UI::Println(_) => {
+                let score = exam_session.score();
+                println!("-----------------");
+                println!();
+                println!("    {}", "Result".green().bold());
+                println!("   {} {}/{}", "Correct".blue().bold(), exam_session.correct_cards, exam_session.total_cards);
+                println!("     {} {}", "Score".blue().bold(), if score >= 90 {
+                    format!("{}%", score).green().bold()
+                } else if score >= 50 {
+                    format!("{}%", score).yellow().bold()
+                } else {
+                    format!("{}%", score).red().bold()
+                });
+            }
+            UI::Ratatui(_) => {}
+        }
+
+        Ok(())
     }
 }
 
